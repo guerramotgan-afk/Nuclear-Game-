@@ -1,0 +1,105 @@
+
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<title>Nuclear Arcade 3D</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<link rel="apple-touch-icon" href="icona.png">
+<style>
+body { margin:0; overflow:hidden; background:#000; font-family: monospace; }
+canvas { display:block; width:100vw; height:100vh; }
+#hud { position:absolute; top:10px; left:10px; color:#0f0; font-family: monospace; z-index:10; }
+.alert { color:#f00; font-weight:bold; font-size:1.2em; }
+button, input[type=range] { position:absolute; z-index:20; padding:10px; font-size:1em; border:none; border-radius:5px; }
+#toggleMod { top:10px; right:10px; background:#222; color:#0f0; }
+#uSlider { bottom:10px; left:10px; width:80%; }
+</style>
+</head>
+<body>
+<div id="hud">
+<div id="score">Score: 0</div>
+<div id="power">Power: 50%</div>
+<div id="temp">T: 300°C</div>
+<div id="press">P: 100 atm</div>
+<div id="alert"></div>
+</div>
+<button id="toggleMod">Cambia Moderatore</button>
+<input type="range" id="uSlider" min="1" max="5" step="0.1" value="3">
+<canvas id="glcanvas"></canvas>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.158.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+let canvas=document.getElementById("glcanvas");
+let renderer=new THREE.WebGLRenderer({canvas, antialias:true});
+renderer.setSize(window.innerWidth,window.innerHeight);
+let scene=new THREE.Scene();
+scene.background=new THREE.Color(0x0a0a0a);
+let camera=new THREE.PerspectiveCamera(75,window.innerWidth/window.innerHeight,0.1,1000);
+camera.position.set(0,1.5,5);
+let controls=new THREE.OrbitControls(camera, renderer.domElement);
+controls.enableZoom=true;
+let pointLight=new THREE.PointLight(0xffffff,1.5,50);
+pointLight.position.set(5,5,5);
+scene.add(pointLight);
+let coreGeo=new THREE.SphereGeometry(1,64,64);
+let coreMat=new THREE.MeshStandardMaterial({color:0x00ff00,emissive:0x00ff00,metalness:0.8,roughness:0.1});
+let core=new THREE.Mesh(coreGeo,coreMat);
+scene.add(core);
+let barreGroup=new THREE.Group();
+let barre=[];
+for(let i=0;i<5;i++){
+let geo=new THREE.CylinderGeometry(0.1,0.1,2,32);
+let mat=new THREE.MeshStandardMaterial({color:0x00ff00,metalness:0.7,roughness:0.2,emissive:0x003300});
+let bar=new THREE.Mesh(geo,mat);
+bar.position.x=(i-2)*0.35;
+barre.push(bar);
+barreGroup.add(bar);
+}
+scene.add(barreGroup);
+let particleGeo=new THREE.SphereGeometry(0.05,8,8);
+let particles=[];
+for(let i=0;i<150;i++){
+let mat=new THREE.MeshBasicMaterial({color:Math.random()>0.5?0xff0000:0xffff00});
+let p=new THREE.Mesh(particleGeo,mat);
+p.position.set((Math.random()-0.5)*3,(Math.random()-0.5)*3,(Math.random()-0.5)*3);
+scene.add(p);
+particles.push(p);
+}
+let score=0,power=50,temp=300,press=100,emergenza=false;
+let u235=3.0,moderator="D₂O",missionTarget=60;
+document.getElementById("toggleMod").addEventListener("click",()=>{moderator=(moderator=="D₂O")?"H₂O":"D₂O";});
+document.getElementById("uSlider").addEventListener("input",(e)=>{u235=parseFloat(e.target.value);});
+function updateHUD(){
+document.getElementById("score").textContent="Score:"+Math.floor(score);
+document.getElementById("power").textContent="Power:"+Math.round(power)+"%";
+document.getElementById("temp").textContent="T:"+Math.round(temp)+"°C";
+document.getElementById("press").textContent="P:"+Math.round(press)+" atm";
+let alertText="";
+if(emergenza) alertText="!!! EMERGENZA !!!";
+else if(power>90) alertText="!!! POTENZA MASSIMA !!!";
+else if(power<20) alertText="!!! POTENZA BASSA !!!";
+document.getElementById("alert").textContent=alertText;
+}
+let explosionParticles=[];
+function triggerExplosion(){for(let i=0;i<50;i++){let p=new THREE.Mesh(new THREE.SphereGeometry(0.05,6,6),new THREE.MeshBasicMaterial({color:0xffaa00}));p.position.copy(core.position);p.userData.velocity=new THREE.Vector3((Math.random()-0.5)*2,(Math.random()-0.5)*2,(Math.random()-0.5)*2);scene.add(p);explosionParticles.push(p);}}
+function simulateStep(){
+power += (Math.random()-0.5)*2; power=Math.max(0,Math.min(100,power));
+temp=300 + power*5; press=100 + power*2;
+if(Math.abs(power-missionTarget)<5) score+=0.2;
+barre.forEach((b)=>{b.material.color.set(power>50?0xffff00:0x00ff00);b.material.emissive.set(power>50?0x666600:0x003300);});
+particles.forEach(p=>{p.position.x+=(Math.random()-0.5)*0.05;p.position.y+=(Math.random()-0.5)*0.05;p.position.z+=(Math.random()-0.5)*0.05;if(Math.random()<0.02)p.position.set((Math.random()-0.5)*3,(Math.random()-0.5)*3,(Math.random()-0.5)*3);});
+if(Math.random()<0.005){emergenza=true;triggerExplosion();} else if(emergenza && Math.random()<0.01) emergenza=false;
+explosionParticles.forEach((p,i)=>{p.position.add(p.userData.velocity.clone().multiplyScalar(0.1));p.material.opacity-=0.02;if(p.material.opacity<=0){scene.remove(p);explosionParticles.splice(i,1);}});
+}
+function animate(){requestAnimationFrame(animate);core.rotation.y+=0.01 + power/1000;barreGroup.rotation.y+=0.005;simulateStep();updateHUD();renderer.render(scene,camera);}
+animate();
+canvas.addEventListener("touchstart",(e)=>{power=missionTarget+(Math.random()-0.5)*5;triggerExplosion();});
+canvas.addEventListener("click",(e)=>{power=missionTarget+(Math.random()-0.5)*5;triggerExplosion();});
+window.addEventListener("resize",()=>{camera.aspect=window.innerWidth/window.innerHeight;camera.updateProjectionMatrix();renderer.setSize(window.innerWidth,window.innerHeight);});
+</script>
+</body>
+</html>
